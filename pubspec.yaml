@@ -37,6 +37,7 @@ dependencies:
   cupertino_icons: ^1.0.6
   noise_meter: ^5.0.2
   permission_handler: ^11.3.1
+  shared_preferences: ^2.2.3
 
 dev_dependencies:
   flutter_test:

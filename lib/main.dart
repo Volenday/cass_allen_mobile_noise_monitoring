@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:noise_meter/noise_meter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
+import './noise_level.dart';
 
 void main() {
   runApp(const MyApp());
@@ -34,10 +37,17 @@ class _MyHomePageState extends State<MyHomePage> {
   StreamSubscription<NoiseReading>? _noiseSubscription;
   NoiseMeter? noiseMeter;
 
-  final List _noiseHistory = [];
+  List<NoiseLevel> _noiseHistory = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadHistory();
+  }
 
   @override
   void dispose() {
+    saveHistory();
     _noiseSubscription?.cancel();
     super.dispose();
   }
@@ -48,6 +58,25 @@ class _MyHomePageState extends State<MyHomePage> {
   void onError(Object error) {
     print(error);
     stop();
+  }
+
+  // load history
+  void loadHistory() async {
+    SharedPreferences? prefs = await SharedPreferences.getInstance();
+    final List<String> history = prefs.getStringList('noiseHistory') ?? [];
+    print(history);
+    setState(() {
+      _noiseHistory =
+          history.map((e) => NoiseLevel.fromJson(jsonDecode(e))).toList();
+    });
+  }
+
+  void saveHistory() async {
+    SharedPreferences? prefs = await SharedPreferences.getInstance();
+    final List<String> history =
+        _noiseHistory.map((e) => jsonEncode(e.toJson())).toList();
+    print(history);
+    prefs.setStringList('noiseHistory', history);
   }
 
   /// Check if microphone permission is granted.
@@ -80,14 +109,15 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void addNoiseLevel() {
-    _noiseHistory.add({
-      'date': DateTime.now().toString(),
-      'noiseLevel': _latestReading?.meanDecibel.toStringAsFixed(2),
-    });
+    _noiseHistory.add(NoiseLevel(
+      timestamp: DateTime.now().toString(),
+      noiseLevel: _latestReading?.meanDecibel,
+    ));
   }
 
   /// Stop sampling.
   void stop() {
+    saveHistory();
     _noiseSubscription?.cancel();
     setState(() => _isRecording = false);
   }
@@ -116,7 +146,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     _noiseHistory[_noiseHistory.length - index - 1];
                 return Center(
                   child: Text(
-                      '${noiseItem['date']} - ${noiseItem['noiseLevel']} dB'),
+                      '${noiseItem.timestamp} - ${noiseItem.noiseLevel?.toStringAsFixed(2) ?? '-1'} dB'),
                 );
               },
               separatorBuilder: (context, index) => const Divider(
