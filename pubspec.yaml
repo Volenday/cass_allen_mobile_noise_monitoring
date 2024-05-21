@@ -38,6 +38,7 @@ dependencies:
   noise_meter: ^5.0.2
   permission_handler: ^11.3.1
   shared_preferences: ^2.2.3
+  dio: ^5.4.3+1
 
 dev_dependencies:
   flutter_test:

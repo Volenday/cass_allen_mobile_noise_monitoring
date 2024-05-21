@@ -2,10 +2,19 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import 'package:noise_meter/noise_meter.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
-import './noise_level.dart';
+import 'models/noise_level.dart';
+
+// need to replace shared preferences if going to be bigger
+// shared preferences is not good for large data
+import 'package:shared_preferences/shared_preferences.dart';
+
+const apiUrl = 'https://api.ahamatic.com/api';
+const apiKey = '';
+const emailAddress = '';
+const password = '';
 
 void main() {
   runApp(const MyApp());
@@ -32,17 +41,22 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  final Dio _dio = Dio();
+  String? _token;
+  int? _person;
+
   bool _isRecording = false;
   NoiseReading? _latestReading;
   StreamSubscription<NoiseReading>? _noiseSubscription;
   NoiseMeter? noiseMeter;
 
   List<NoiseLevel> _noiseHistory = [];
+  List<NoiseLevel> _newAddedHistory = [];
 
   @override
   void initState() {
     super.initState();
-    loadHistory();
+    initialize();
   }
 
   @override
@@ -52,31 +66,92 @@ class _MyHomePageState extends State<MyHomePage> {
     super.dispose();
   }
 
-  void onData(NoiseReading noiseReading) =>
-      setState(() => _latestReading = noiseReading);
-
-  void onError(Object error) {
-    print(error);
-    stop();
+  void initialize() async {
+    await login();
+    await fetchHistory();
+    loadHistory();
   }
 
-  // load history
+  Future<void> login() async {
+    final response = await _dio.post('$apiUrl/auth/email', data: {
+      'emailAddress': emailAddress,
+      'password': password,
+      'apiKey': apiKey,
+      'rememberMe': false
+    });
+    setState(() {
+      _token = response.data['token'];
+      _person = response.data['account']['PersonId'];
+    });
+  }
+
   void loadHistory() async {
     SharedPreferences? prefs = await SharedPreferences.getInstance();
     final List<String> history = prefs.getStringList('noiseHistory') ?? [];
-    print(history);
-    setState(() {
-      _noiseHistory =
-          history.map((e) => NoiseLevel.fromJson(jsonDecode(e))).toList();
-    });
+    final List<NoiseLevel> tempNoiseHistory =
+        history.map((e) => NoiseLevel.fromJsonLocal(jsonDecode(e))).toList();
+    print('Local Noise History');
+    tempNoiseHistory.forEach((e) => print(e.toString()));
+
+    if (_noiseHistory.isEmpty) {
+      setState(() {
+        _newAddedHistory = tempNoiseHistory;
+      });
+    }
   }
 
   void saveHistory() async {
     SharedPreferences? prefs = await SharedPreferences.getInstance();
     final List<String> history =
         _noiseHistory.map((e) => jsonEncode(e.toJson())).toList();
-    print(history);
     prefs.setStringList('noiseHistory', history);
+  }
+
+  Future<void> fetchHistory() async {
+    final response = await _dio.get(
+      '$apiUrl/e/NoiseRecords',
+      queryParameters: {
+        'filter': {'Person': _person},
+        'sortBy': {'RecordedDate': 1},
+      },
+      options: Options(
+        headers: {
+          "Authorization": _token,
+          "Content-Type": "application/json",
+        },
+      ),
+    );
+    final data = response.data['data'];
+    final List tempNoiseHistory =
+        data.map((e) => NoiseLevel.fromJsonRemote(e)).toList();
+    print('Remote Noise History');
+    tempNoiseHistory.forEach((e) => print(e.toString()));
+    setState(() {
+      _noiseHistory = tempNoiseHistory.cast();
+    });
+  }
+
+  void sendHistory() async {
+    final history = [..._newAddedHistory];
+    _newAddedHistory.clear();
+    setState(() {
+      _noiseHistory = [..._noiseHistory, ...history];
+    });
+
+    final response = await Future.wait(
+      history.map(
+        (d) => _dio.post(
+          '$apiUrl/e/NoiseRecords/',
+          data: d.toJson(),
+          options: Options(
+            headers: {
+              'Authorization': _token,
+              'Content-Type': 'application/json',
+            },
+          ),
+        ),
+      ),
+    );
   }
 
   /// Check if microphone permission is granted.
@@ -100,26 +175,40 @@ class _MyHomePageState extends State<MyHomePage> {
     // Listen to the noise stream.
     _noiseSubscription = noiseMeter?.noise.listen(onData, onError: onError);
     setState(() => _isRecording = true);
-    Timer.periodic(const Duration(seconds: 5), (timer) {
+
+    Timer.periodic(const Duration(seconds: 1), (timer) {
       addNoiseLevel();
       if (!_isRecording) {
         timer.cancel();
       }
     });
+    Timer.periodic(const Duration(seconds: 10), (timer) {
+      sendHistory();
+    });
   }
 
   void addNoiseLevel() {
-    _noiseHistory.add(NoiseLevel(
-      timestamp: DateTime.now().toString(),
-      noiseLevel: _latestReading?.meanDecibel,
+    _newAddedHistory.add(NoiseLevel(
+      RecordedDate: DateTime.now().toString(),
+      Decibel: _latestReading?.meanDecibel,
+      Person: _person,
     ));
   }
 
   /// Stop sampling.
   void stop() {
+    sendHistory();
     saveHistory();
     _noiseSubscription?.cancel();
     setState(() => _isRecording = false);
+  }
+
+  void onData(NoiseReading noiseReading) =>
+      setState(() => _latestReading = noiseReading);
+
+  void onError(Object error) {
+    print(error);
+    stop();
   }
 
   @override
@@ -140,13 +229,15 @@ class _MyHomePageState extends State<MyHomePage> {
           SizedBox(
             height: 450,
             child: ListView.separated(
-              itemCount: _noiseHistory.length,
+              itemCount: _noiseHistory.length + _newAddedHistory.length,
               itemBuilder: (context, index) {
-                final noiseItem =
-                    _noiseHistory[_noiseHistory.length - index - 1];
+                final noiseItem = [
+                  ..._noiseHistory,
+                  ..._newAddedHistory
+                ][_noiseHistory.length + _newAddedHistory.length - index - 1];
                 return Center(
                   child: Text(
-                      '${noiseItem.timestamp} - ${noiseItem.noiseLevel?.toStringAsFixed(2) ?? '-1'} dB'),
+                      '${noiseItem.RecordedDate} - ${noiseItem.Decibel?.toStringAsFixed(2)} dB'),
                 );
               },
               separatorBuilder: (context, index) => const Divider(
@@ -159,7 +250,7 @@ class _MyHomePageState extends State<MyHomePage> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: _isRecording ? Colors.red : Colors.green,
         onPressed: _isRecording ? stop : start,
-        child: _isRecording ? Icon(Icons.stop) : Icon(Icons.mic),
+        child: _isRecording ? const Icon(Icons.stop) : const Icon(Icons.mic),
       ),
     );
   }
