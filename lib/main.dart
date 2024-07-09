@@ -67,9 +67,13 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void initialize() async {
-    await login();
-    await fetchHistory();
-    loadHistory();
+    try {
+      await login();
+      await fetchHistory();
+    } catch (e) {
+      print(e);
+      await loadHistory();
+    }
   }
 
   Future<void> login() async {
@@ -85,22 +89,18 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void loadHistory() async {
+  Future<void> loadHistory() async {
     SharedPreferences? prefs = await SharedPreferences.getInstance();
     final List<String> history = prefs.getStringList('noiseHistory') ?? [];
+    print(history);
     final List<NoiseLevel> tempNoiseHistory =
         history.map((e) => NoiseLevel.fromJsonLocal(jsonDecode(e))).toList();
-    print('Local Noise History');
-    tempNoiseHistory.forEach((e) => print(e.toString()));
-
-    if (_noiseHistory.isEmpty) {
-      setState(() {
-        _newAddedHistory = tempNoiseHistory;
-      });
-    }
+    setState(() {
+      _noiseHistory = tempNoiseHistory;
+    });
   }
 
-  void saveHistory() async {
+  Future<void> saveHistory() async {
     SharedPreferences? prefs = await SharedPreferences.getInstance();
     final List<String> history =
         _noiseHistory.map((e) => jsonEncode(e.toJson())).toList();
@@ -111,12 +111,13 @@ class _MyHomePageState extends State<MyHomePage> {
     final response = await _dio.get(
       '$apiUrl/e/NoiseRecords',
       queryParameters: {
-        'filter': {'Person': _person},
+        'all': true,
+        // 'filter': {'Person': _person},
         'sortBy': {'RecordedDate': 1},
       },
       options: Options(
         headers: {
-          "Authorization": _token,
+          "Authorization": 'Bearer $_token',
           "Content-Type": "application/json",
         },
       ),
@@ -124,34 +125,39 @@ class _MyHomePageState extends State<MyHomePage> {
     final data = response.data['data'];
     final List tempNoiseHistory =
         data.map((e) => NoiseLevel.fromJsonRemote(e)).toList();
-    print('Remote Noise History');
-    tempNoiseHistory.forEach((e) => print(e.toString()));
+
     setState(() {
       _noiseHistory = tempNoiseHistory.cast();
     });
   }
 
-  void sendHistory() async {
+  Future<void> sendHistory() async {
     final history = [..._newAddedHistory];
     _newAddedHistory.clear();
-    setState(() {
-      _noiseHistory = [..._noiseHistory, ...history];
-    });
-
-    final response = await Future.wait(
-      history.map(
-        (d) => _dio.post(
-          '$apiUrl/e/NoiseRecords/',
-          data: d.toJson(),
-          options: Options(
-            headers: {
-              'Authorization': _token,
-              'Content-Type': 'application/json',
-            },
+    try {
+      await Future.wait(
+        history.map(
+          (d) => _dio.post(
+            '$apiUrl/e/NoiseRecords/',
+            data: d.toJson(),
+            options: Options(
+              headers: {
+                'Authorization': 'Bearer $_token',
+                'Content-Type': 'application/json',
+              },
+            ),
           ),
         ),
-      ),
-    );
+      );
+      setState(() {
+        _noiseHistory = [..._noiseHistory, ...history];
+      });
+    } catch (e) {
+      setState(() {
+        _newAddedHistory = [...history, ..._newAddedHistory];
+      });
+      print(e);
+    }
   }
 
   /// Check if microphone permission is granted.
@@ -237,7 +243,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 ][_noiseHistory.length + _newAddedHistory.length - index - 1];
                 return Center(
                   child: Text(
-                      '${noiseItem.RecordedDate} - ${noiseItem.Decibel?.toStringAsFixed(2)} dB'),
+                      '${noiseItem.RecordedDate?.split('.')[0]} - ${noiseItem.Decibel?.toStringAsFixed(2)} dB'),
                 );
               },
               separatorBuilder: (context, index) => const Divider(
