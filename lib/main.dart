@@ -74,10 +74,7 @@ class _MyHomePageState extends State<MyHomePage> {
       print(e);
       await loadHistory();
     }
-    debugPrint('Noise History:');
-    _noiseHistory.forEach((element) => debugPrint(element.toString()));
-    debugPrint('New Added History:');
-    _newAddedHistory.forEach((element) => debugPrint(element.toString()));
+    testPrint();
   }
 
   Future<void> login() async {
@@ -94,6 +91,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> loadHistory() async {
+    debugPrint('loading local history...');
     SharedPreferences? prefs = await SharedPreferences.getInstance();
     final List<String> history = prefs.getStringList('noiseHistory') ?? [];
     final List<NoiseLevel> tempNoiseHistory =
@@ -115,7 +113,7 @@ class _MyHomePageState extends State<MyHomePage> {
       '$apiUrl/e/NoiseRecords',
       queryParameters: {
         'all': true,
-        // 'filter': {'Person': _person},
+        'filter': {'Station': 'Station 1'},
         'sortBy': {'RecordedDate': 1},
       },
       options: Options(
@@ -135,6 +133,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> sendHistory() async {
+    testPrint();
     final history = [..._newAddedHistory];
     _newAddedHistory.clear();
     try {
@@ -217,6 +216,13 @@ class _MyHomePageState extends State<MyHomePage> {
   void onError(Object error) {
     print(error);
     stop();
+  }
+
+  void testPrint() {
+    debugPrint('Noise History:');
+    _noiseHistory.forEach((element) => debugPrint(element.toString()));
+    debugPrint('New Added History:');
+    _newAddedHistory.forEach((element) => debugPrint(element.toString()));
   }
 
   @override
