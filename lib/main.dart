@@ -74,6 +74,10 @@ class _MyHomePageState extends State<MyHomePage> {
       print(e);
       await loadHistory();
     }
+    debugPrint('Noise History:');
+    _noiseHistory.forEach((element) => debugPrint(element.toString()));
+    debugPrint('New Added History:');
+    _newAddedHistory.forEach((element) => debugPrint(element.toString()));
   }
 
   Future<void> login() async {
@@ -92,7 +96,6 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> loadHistory() async {
     SharedPreferences? prefs = await SharedPreferences.getInstance();
     final List<String> history = prefs.getStringList('noiseHistory') ?? [];
-    print(history);
     final List<NoiseLevel> tempNoiseHistory =
         history.map((e) => NoiseLevel.fromJsonLocal(jsonDecode(e))).toList();
     setState(() {
@@ -156,7 +159,6 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() {
         _newAddedHistory = [...history, ..._newAddedHistory];
       });
-      print(e);
     }
   }
 
