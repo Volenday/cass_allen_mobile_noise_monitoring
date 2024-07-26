@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:lottie/lottie.dart';
 import 'package:noise_meter/noise_meter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'models/noise_level.dart';
@@ -195,6 +196,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void addNoiseLevel() {
+    debugPrint(DateTime.now().toString());
     _newAddedHistory.add(NoiseLevel(
       RecordedDate: DateTime.now().toString(),
       Decibel: _latestReading?.meanDecibel,
@@ -230,18 +232,54 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       body: Column(
         children: <Widget>[
-          SizedBox(
-            height: 200,
-            child: Center(
-              child: Text(
-                '${_latestReading?.meanDecibel.toStringAsFixed(2)} dB',
-                style: Theme.of(context).textTheme.headlineLarge,
+          Padding(
+            padding: const EdgeInsets.only(top: 50),
+            child: SizedBox(
+              height: 100,
+              child: Center(
+                child: Text(
+                  '${_latestReading?.meanDecibel.toStringAsFixed(2)} dB',
+                  style: const TextStyle(
+                    fontSize: 40,
+                    color: Colors.green,
+                  ),
+                ),
               ),
             ),
           ),
-          const Text('Latest Date Updated'),
           SizedBox(
-            height: 450,
+            height: 80,
+            child: Lottie.network(
+              'https://lottie.host/2f49a733-35ce-46bc-be28-cac6999217d0/eBLTqCdki0.json',
+              fit: BoxFit.contain,
+            ),
+          ),
+          const Text('Latest Date Updated'),
+          const Flex(direction: Axis.horizontal, children: [
+            Expanded(
+              child: Text(
+                'Date',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                'Time',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                'Decibel',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ]),
+          SizedBox(
+            height: 340,
             child: ListView.separated(
               itemCount: _noiseHistory.length + _newAddedHistory.length,
               itemBuilder: (context, index) {
@@ -249,10 +287,43 @@ class _MyHomePageState extends State<MyHomePage> {
                   ..._noiseHistory,
                   ..._newAddedHistory
                 ][_noiseHistory.length + _newAddedHistory.length - index - 1];
-                return Center(
-                  child: Text(
-                      '${noiseItem.RecordedDate?.split('.')[0]} - ${noiseItem.Decibel?.toStringAsFixed(2)} dB'),
+
+                debugPrint(noiseItem.RecordedDate);
+                String? date, time;
+                try {
+                  date = noiseItem.RecordedDate?.split('T')[0];
+                  time = noiseItem.RecordedDate?.split('T')[1];
+                } catch (error) {
+                  date = noiseItem.RecordedDate?.split(' ')[0];
+                  time = noiseItem.RecordedDate?.split(' ')[1].split('.')[0];
+                }
+                debugPrint(date);
+                debugPrint(time);
+
+                return Flex(
+                  direction: Axis.horizontal,
+                  children: [
+                    Expanded(
+                        child: Text(
+                      date ?? '',
+                      textAlign: TextAlign.center,
+                    )),
+                    Expanded(
+                        child: Text(time ?? '', textAlign: TextAlign.center)),
+                    Expanded(
+                        child: Text(
+                      noiseItem.Decibel?.toStringAsFixed(2) ?? '',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: Colors.green, fontWeight: FontWeight.bold),
+                    )),
+                  ],
                 );
+
+                // return Center(
+                //   child: Text(
+                //       '${noiseItem.RecordedDate?.split('.')[0]} - ${noiseItem.Decibel?.toStringAsFixed(2)} dB'),
+                // );
               },
               separatorBuilder: (context, index) => const Divider(
                 thickness: 2.0,
@@ -261,10 +332,13 @@ class _MyHomePageState extends State<MyHomePage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: _isRecording ? Colors.red : Colors.green,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: Colors.green,
         onPressed: _isRecording ? stop : start,
-        child: _isRecording ? const Icon(Icons.stop) : const Icon(Icons.mic),
+        label: Text(_isRecording ? 'Stop' : 'Start'),
+        icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+        extendedPadding: const EdgeInsets.symmetric(horizontal: 160),
       ),
     );
   }
