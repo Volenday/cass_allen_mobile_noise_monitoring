@@ -44,7 +44,6 @@ class MyHomePage extends StatefulWidget {
 class _MyHomePageState extends State<MyHomePage> {
   final Dio _dio = Dio();
   String? _token;
-  int? _person;
 
   bool _isRecording = false;
   NoiseReading? _latestReading;
@@ -85,9 +84,9 @@ class _MyHomePageState extends State<MyHomePage> {
       'apiKey': apiKey,
       'rememberMe': false
     });
+    // debugPrint(response.data.toString());
     setState(() {
       _token = response.data['token'];
-      _person = response.data['account']['PersonId'];
     });
   }
 
@@ -184,23 +183,22 @@ class _MyHomePageState extends State<MyHomePage> {
     _noiseSubscription = noiseMeter?.noise.listen(onData, onError: onError);
     setState(() => _isRecording = true);
 
-    Timer.periodic(const Duration(seconds: 1), (timer) {
+    Timer.periodic(const Duration(minutes: 1), (timer) {
       addNoiseLevel();
+      sendHistory();
       if (!_isRecording) {
         timer.cancel();
       }
     });
-    Timer.periodic(const Duration(seconds: 10), (timer) {
-      sendHistory();
-    });
+    // Timer.periodic(const Duration(seconds: 10), (timer) {
+    //   sendHistory();
+    // });
   }
 
   void addNoiseLevel() {
-    debugPrint(DateTime.now().toString());
     _newAddedHistory.add(NoiseLevel(
       RecordedDate: DateTime.now().toString(),
       Decibel: _latestReading?.meanDecibel,
-      Person: _person,
     ));
   }
 
@@ -279,7 +277,7 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ]),
           SizedBox(
-            height: 340,
+            height: 360,
             child: ListView.separated(
               itemCount: _noiseHistory.length + _newAddedHistory.length,
               itemBuilder: (context, index) {
@@ -288,17 +286,16 @@ class _MyHomePageState extends State<MyHomePage> {
                   ..._newAddedHistory
                 ][_noiseHistory.length + _newAddedHistory.length - index - 1];
 
-                debugPrint(noiseItem.RecordedDate);
                 String? date, time;
                 try {
+                  // date and time is separated by 'T' from remote API
                   date = noiseItem.RecordedDate?.split('T')[0];
-                  time = noiseItem.RecordedDate?.split('T')[1];
+                  time = noiseItem.RecordedDate?.split('T')[1].split('.')[0];
                 } catch (error) {
+                  // date and time is separated by ' ' from dart DateTime.now().toString()
                   date = noiseItem.RecordedDate?.split(' ')[0];
                   time = noiseItem.RecordedDate?.split(' ')[1].split('.')[0];
                 }
-                debugPrint(date);
-                debugPrint(time);
 
                 return Flex(
                   direction: Axis.horizontal,
@@ -338,7 +335,7 @@ class _MyHomePageState extends State<MyHomePage> {
         onPressed: _isRecording ? stop : start,
         label: Text(_isRecording ? 'Stop' : 'Start'),
         icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-        extendedPadding: const EdgeInsets.symmetric(horizontal: 160),
+        extendedPadding: const EdgeInsets.symmetric(horizontal: 140),
       ),
     );
   }
