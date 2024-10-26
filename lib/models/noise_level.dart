@@ -1,44 +1,46 @@
 class NoiseLevel {
   final int? id;
-  final String? RecordedDate;
-  final double? Decibel;
-  final String Station;
+  final String? recordedDate;
+  final double? decibel;
+  final String station;
+  final String audioPath;
 
   NoiseLevel({
     this.id,
-    this.RecordedDate,
-    this.Decibel,
-    this.Station = 'Station 1',
+    this.recordedDate,
+    this.decibel,
+    this.station = 'Station 1',
+    this.audioPath = '',
   });
 
   factory NoiseLevel.fromJsonLocal(Map<String, dynamic> json) {
     return NoiseLevel(
       id: json['id'],
-      RecordedDate: json['RecordedDate'],
-      Decibel: (json['Decibel']),
-      Station: json['Station'] ?? 'Station 1',
+      recordedDate: json['recordedDate'],
+      decibel: (json['decibel']),
+      station: json['station'] ?? 'Station 1',
     );
   }
   factory NoiseLevel.fromJsonRemote(Map<String, dynamic> json) {
     return NoiseLevel(
       id: json['Id'],
-      RecordedDate: json['RecordedDate'],
-      Decibel: double.parse(json['Decibel'].toString()),
-      Station: json['Station'] ?? 'Station 1',
+      recordedDate: json['recordedDate'],
+      decibel: double.parse(json['decibel'].toString()),
+      station: json['station'] ?? 'Station 1',
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'RecordedDate': RecordedDate,
-      'Decibel': Decibel,
-      'Station': Station,
+      'recordedDate': recordedDate,
+      'decibel': decibel,
+      'station': station,
     };
   }
 
   @override
   String toString() {
-    return 'NoiseLevel{id: $id, RecordedDate: $RecordedDate, Decibel: $Decibel, Station: $Station}';
+    return 'NoiseLevel{id: $id, RecordedDate: $recordedDate, Decibel: $decibel, Station: $station}';
   }
 }

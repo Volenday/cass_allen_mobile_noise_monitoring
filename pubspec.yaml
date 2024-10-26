@@ -1,5 +1,5 @@
 name: flutter_noise_meter_demo
-description: "A new Flutter project."
+description: 'A new Flutter project.'
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -31,7 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.6
@@ -40,6 +39,13 @@ dependencies:
   shared_preferences: ^2.2.3
   dio: ^5.4.3+1
   lottie: ^3.1.2
+  flutter_sound: ^9.16.3
+  path_provider: ^2.1.4
+  audio_session: ^0.1.21
+  flutter_sound_platform_interface: ^9.16.3
+  flutter_webrtc: ^0.12.1
+  record: ^5.1.2
+  just_audio: ^0.9.41
 
 dev_dependencies:
   flutter_test:
@@ -57,7 +63,6 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
-
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

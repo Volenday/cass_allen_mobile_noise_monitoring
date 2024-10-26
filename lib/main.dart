@@ -7,6 +7,12 @@ import 'package:lottie/lottie.dart';
 import 'package:noise_meter/noise_meter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'models/noise_level.dart';
+import 'package:flutter_sound/flutter_sound.dart';
+import 'package:flutter_noise_meter_demo/mic_selector.dart';
+import 'package:path_provider/path_provider.dart';
+
+import 'package:record/record.dart';
+import 'package:just_audio/just_audio.dart';
 
 // need to replace shared preferences if going to be bigger
 // shared preferences is not good for large data
@@ -52,17 +58,66 @@ class _MyHomePageState extends State<MyHomePage> {
 
   List<NoiseLevel> _noiseHistory = [];
   List<NoiseLevel> _newAddedHistory = [];
+  final MicrophoneControl _microphoneControl = MicrophoneControl();
+  bool _isMicMuted = false;
+  bool _isExternalMicConnected = false;
+  String _selectedMicName = '';
+
+  int _recordingCount = 1;
+
+  // final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
+  // final FlutterSoundPlayer _player = FlutterSoundPlayer();
+
+  final record = AudioRecorder();
+  final player = AudioPlayer();
 
   @override
   void initState() {
     super.initState();
+    // _loadMicrophones();
+    // _player.openPlayer();
     initialize();
+    _checkAndControlMicrophone();
+    // getActiveAudioInputDevice().then((device) {
+    //   setState(() {
+    //     _activeDevice = device?.name;
+    //   });
+    // });
+  }
+
+  // Method to check external mic and mute/unmute based on its status
+  void _checkAndControlMicrophone() async {
+    bool isConnected = await _microphoneControl.isExternalMicConnected();
+    setState(() {
+      _isExternalMicConnected = isConnected;
+    });
+
+    if (isConnected) {
+      // If external microphone is connected, unmute
+      await _microphoneControl.unmuteMicrophone();
+      setState(() {
+        _isMicMuted = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('External microphone connected. Microphone unmuted.'),
+      ));
+    } else {
+      // If no external microphone is connected, mute
+      await _microphoneControl.muteMicrophone();
+      setState(() {
+        _isMicMuted = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('No external microphone connected. Microphone muted.'),
+      ));
+    }
   }
 
   @override
   void dispose() {
     saveHistory();
     _noiseSubscription?.cancel();
+    // _player.closePlayer();
     super.dispose();
   }
 
@@ -75,6 +130,25 @@ class _MyHomePageState extends State<MyHomePage> {
       await loadHistory();
     }
     testPrint();
+  }
+
+  Future<void> playRecordedAudio(String path) async {
+    try {
+      print(path);
+      print('awit...');
+      // await _player.startPlayer(
+      //   fromURI: path,
+      //   codec: Codec.pcm16WAV,
+      //   whenFinished: () {
+      //     print('Playback finished');
+      //   },
+      // );
+      await player.setUrl(// Load a URL
+          path); // Schemes: (https: | file: | asset: )
+      player.play();
+    } catch (e) {
+      print('Error playing recorded audio: $e');
+    }
   }
 
   Future<void> login() async {
@@ -170,36 +244,77 @@ class _MyHomePageState extends State<MyHomePage> {
 
   /// Start noise sampling.
   Future<void> start() async {
-    // Create a noise meter, if not already done.
     noiseMeter ??= NoiseMeter();
 
-    // Check permission to use the microphone.
-    //
-    // Remember to update the AndroidManifest file (Android) and the
-    // Info.plist and pod files (iOS).
+    // Ensure permissions are granted
     if (!(await checkPermission())) await requestPermission();
 
-    // Listen to the noise stream.
+    // await _recorder.openRecorder();
     _noiseSubscription = noiseMeter?.noise.listen(onData, onError: onError);
     setState(() => _isRecording = true);
 
-    Timer.periodic(const Duration(minutes: 1), (timer) {
-      addNoiseLevel();
-      sendHistory();
-      if (!_isRecording) {
-        timer.cancel();
+    Timer.periodic(const Duration(seconds: 10), (timer) async {
+      try {
+        // await _recorder.stopRecorder();
+        // Stop recording...
+
+        if (_recordingCount != 1) {
+          final path = await record.stop();
+          // record.dispose(); // As always, don't forget this one.
+          print(path);
+          print('awit');
+
+          record.dispose();
+        }
+
+        _recordingCount += 1;
+
+        // Get the directory for saving files
+        final directory = await getApplicationDocumentsDirectory();
+        final filePath =
+            '${directory.path}/audio_recorded-$_recordingCount.mp3';
+
+        // Start recording with full file path
+        // await _recorder.startRecorder(
+        //   toFile: filePath,
+        //   codec: Codec.pcm16WAV,
+        // );
+
+        // Check and request permission if needed
+        if (await record.hasPermission()) {
+          // Start recording to file
+          await record.start(const RecordConfig(), path: filePath);
+        }
+
+        // Save file path to the history object
+        _newAddedHistory.add(
+          NoiseLevel(
+            recordedDate: DateTime.now().toString(),
+            decibel: _latestReading?.meanDecibel,
+            audioPath: filePath,
+          ),
+        );
+
+        // Stop the timer if recording has stopped
+        if (!_isRecording) {
+          // await _recorder.closeRecorder();
+          await record.stop();
+          record.dispose(); // As always, don't forget this one.
+          timer.cancel();
+        }
+      } catch (e) {
+        print('Error during recording: $e');
       }
     });
-    // Timer.periodic(const Duration(seconds: 10), (timer) {
-    //   sendHistory();
-    // });
   }
 
   void addNoiseLevel() {
-    _newAddedHistory.add(NoiseLevel(
-      RecordedDate: DateTime.now().toString(),
-      Decibel: _latestReading?.meanDecibel,
-    ));
+    _newAddedHistory.add(
+      NoiseLevel(
+          recordedDate: DateTime.now().toString(),
+          decibel: _latestReading?.meanDecibel,
+          audioPath: 'audio_recorded-$_recordingCount'),
+    );
   }
 
   /// Stop sampling.
@@ -207,7 +322,9 @@ class _MyHomePageState extends State<MyHomePage> {
     sendHistory();
     saveHistory();
     _noiseSubscription?.cancel();
-    setState(() => _isRecording = false);
+    setState(() {
+      _isRecording = false;
+    });
   }
 
   void onData(NoiseReading noiseReading) =>
@@ -220,9 +337,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void testPrint() {
     debugPrint('Noise History:');
-    _noiseHistory.forEach((element) => debugPrint(element.toString()));
+    for (var element in _noiseHistory) {
+      debugPrint(element.toString());
+    }
     debugPrint('New Added History:');
-    _newAddedHistory.forEach((element) => debugPrint(element.toString()));
+    for (var element in _newAddedHistory) {
+      debugPrint(element.toString());
+    }
   }
 
   @override
@@ -252,7 +373,7 @@ class _MyHomePageState extends State<MyHomePage> {
               fit: BoxFit.contain,
             ),
           ),
-          const Text('Latest Date Updated'),
+          Text(_selectedMicName),
           const Flex(direction: Axis.horizontal, children: [
             Expanded(
               child: Text(
@@ -275,6 +396,13 @@ class _MyHomePageState extends State<MyHomePage> {
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
+            Expanded(
+              child: Text(
+                'Record',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
           ]),
           SizedBox(
             height: 360,
@@ -285,18 +413,14 @@ class _MyHomePageState extends State<MyHomePage> {
                   ..._noiseHistory,
                   ..._newAddedHistory
                 ][_noiseHistory.length + _newAddedHistory.length - index - 1];
-
                 String? date, time;
                 try {
-                  // date and time is separated by 'T' from remote API
-                  date = noiseItem.RecordedDate?.split('T')[0];
-                  time = noiseItem.RecordedDate?.split('T')[1].split('.')[0];
+                  date = noiseItem.recordedDate?.split('T')[0];
+                  time = noiseItem.recordedDate?.split('T')[1].split('.')[0];
                 } catch (error) {
-                  // date and time is separated by ' ' from dart DateTime.now().toString()
-                  date = noiseItem.RecordedDate?.split(' ')[0];
-                  time = noiseItem.RecordedDate?.split(' ')[1].split('.')[0];
+                  date = noiseItem.recordedDate?.split(' ')[0];
+                  time = noiseItem.recordedDate?.split(' ')[1].split('.')[0];
                 }
-
                 return Flex(
                   direction: Axis.horizontal,
                   children: [
@@ -309,24 +433,43 @@ class _MyHomePageState extends State<MyHomePage> {
                         child: Text(time ?? '', textAlign: TextAlign.center)),
                     Expanded(
                         child: Text(
-                      noiseItem.Decibel?.toStringAsFixed(2) ?? '',
+                      noiseItem.decibel?.toStringAsFixed(2) ?? '',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                           color: Colors.green, fontWeight: FontWeight.bold),
                     )),
+                    Expanded(
+                        child: IconButton(
+                      icon: const Icon(Icons.play_arrow),
+                      onPressed: () => playRecordedAudio(noiseItem.audioPath),
+                    )),
                   ],
                 );
-
-                // return Center(
-                //   child: Text(
-                //       '${noiseItem.RecordedDate?.split('.')[0]} - ${noiseItem.Decibel?.toStringAsFixed(2)} dB'),
-                // );
               },
               separatorBuilder: (context, index) => const Divider(
                 thickness: 2.0,
               ),
             ),
           ),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _isExternalMicConnected
+                      ? 'External Mic Connected'
+                      : 'No External Mic Connected',
+                  style: TextStyle(fontSize: 18),
+                ),
+                SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: null,
+                  child: Text(
+                      _isMicMuted ? 'Microphone Muted' : 'Mute Microphone'),
+                ),
+              ],
+            ),
+          )
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
