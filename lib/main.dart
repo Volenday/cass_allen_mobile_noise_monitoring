@@ -61,7 +61,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final MicrophoneControl _microphoneControl = MicrophoneControl();
   bool _isMicMuted = false;
   bool _isExternalMicConnected = false;
-  String _selectedMicName = '';
+  final String _selectedMicName = '';
 
   int _recordingCount = 1;
 
@@ -98,7 +98,7 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() {
         _isMicMuted = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('External microphone connected. Microphone unmuted.'),
       ));
     } else {
@@ -107,7 +107,7 @@ class _MyHomePageState extends State<MyHomePage> {
       setState(() {
         _isMicMuted = true;
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('No external microphone connected. Microphone muted.'),
       ));
     }
@@ -117,6 +117,8 @@ class _MyHomePageState extends State<MyHomePage> {
   void dispose() {
     saveHistory();
     _noiseSubscription?.cancel();
+    record.dispose(); // As always, don't forget this one.
+
     // _player.closePlayer();
     super.dispose();
   }
@@ -245,6 +247,8 @@ class _MyHomePageState extends State<MyHomePage> {
   /// Start noise sampling.
   Future<void> start() async {
     noiseMeter ??= NoiseMeter();
+    // Get the directory for saving files
+    final directory = await getExternalStorageDirectory();
 
     // Ensure permissions are granted
     if (!(await checkPermission())) await requestPermission();
@@ -253,52 +257,46 @@ class _MyHomePageState extends State<MyHomePage> {
     _noiseSubscription = noiseMeter?.noise.listen(onData, onError: onError);
     setState(() => _isRecording = true);
 
-    Timer.periodic(const Duration(seconds: 10), (timer) async {
+    // Check and request permission if needed
+    if (await record.hasPermission()) {
+      // Start recording to file
+      await record.start(const RecordConfig(),
+          path: '${directory?.path}/audio_recorded-$_recordingCount.mp3');
+    }
+
+    Timer.periodic(const Duration(minutes: 1), (timer) async {
       try {
         // await _recorder.stopRecorder();
-        // Stop recording...
+        // Stop recording...        // Save file path to the history object
 
-        if (_recordingCount != 1) {
-          final path = await record.stop();
-          // record.dispose(); // As always, don't forget this one.
-          print(path);
-          print('awit');
+        print(await record.isRecording());
+        print('really?');
+        if (await record.isRecording()) {
+          await record.stop();
 
-          record.dispose();
+          setState(() {
+            _newAddedHistory.add(
+              NoiseLevel(
+                recordedDate: DateTime.now().toString(),
+                decibel: _latestReading?.meanDecibel,
+                audioPath:
+                    '${directory?.path}/audio_recorded-$_recordingCount.mp3',
+              ),
+            );
+          });
+
+          _recordingCount += 1;
         }
 
-        _recordingCount += 1;
-
-        // Get the directory for saving files
-        final directory = await getApplicationDocumentsDirectory();
-        final filePath =
-            '${directory.path}/audio_recorded-$_recordingCount.mp3';
-
-        // Start recording with full file path
-        // await _recorder.startRecorder(
-        //   toFile: filePath,
-        //   codec: Codec.pcm16WAV,
-        // );
-
-        // Check and request permission if needed
-        if (await record.hasPermission()) {
-          // Start recording to file
-          await record.start(const RecordConfig(), path: filePath);
-        }
-
-        // Save file path to the history object
-        _newAddedHistory.add(
-          NoiseLevel(
-            recordedDate: DateTime.now().toString(),
-            decibel: _latestReading?.meanDecibel,
-            audioPath: filePath,
-          ),
-        );
+        // Start recording to file
+        await record.start(const RecordConfig(),
+            path: '${directory?.path}/audio_recorded-$_recordingCount.mp3');
 
         // Stop the timer if recording has stopped
         if (!_isRecording) {
           // await _recorder.closeRecorder();
           await record.stop();
+          _noiseSubscription?.cancel();
           record.dispose(); // As always, don't forget this one.
           timer.cancel();
         }
@@ -321,7 +319,10 @@ class _MyHomePageState extends State<MyHomePage> {
   void stop() {
     sendHistory();
     saveHistory();
+
     _noiseSubscription?.cancel();
+    record.stop();
+    record.dispose(); // As always, don't forget this one.
     setState(() {
       _isRecording = false;
     });
@@ -459,9 +460,9 @@ class _MyHomePageState extends State<MyHomePage> {
                   _isExternalMicConnected
                       ? 'External Mic Connected'
                       : 'No External Mic Connected',
-                  style: TextStyle(fontSize: 18),
+                  style: const TextStyle(fontSize: 18),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: null,
                   child: Text(
