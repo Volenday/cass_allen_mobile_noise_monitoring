@@ -46,6 +46,7 @@ dependencies:
   flutter_webrtc: ^0.12.1
   record: ^5.1.2
   just_audio: ^0.9.41
+  ffmpeg_kit_flutter_audio: ^6.0.3
 
 dev_dependencies:
   flutter_test:

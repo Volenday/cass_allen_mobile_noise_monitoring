@@ -45,7 +45,7 @@ class MainActivity: FlutterActivity() {
 
     private fun unmuteMicrophone() {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.setMicrophoneMute(false)
+        audioManager.setMicrophoneMute(true)
     }
     
 

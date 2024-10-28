@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -11,12 +12,13 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter_noise_meter_demo/mic_selector.dart';
 import 'package:path_provider/path_provider.dart';
 
-import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 
 // need to replace shared preferences if going to be bigger
 // shared preferences is not good for large data
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:ffmpeg_kit_flutter_audio/ffmpeg_kit.dart';
 
 const apiUrl = 'https://api.ahamatic.com/api';
 const apiKey = '';
@@ -65,10 +67,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   int _recordingCount = 1;
 
-  // final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
-  // final FlutterSoundPlayer _player = FlutterSoundPlayer();
-
-  final record = AudioRecorder();
+  final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
   final player = AudioPlayer();
 
   @override
@@ -117,8 +116,7 @@ class _MyHomePageState extends State<MyHomePage> {
   void dispose() {
     saveHistory();
     _noiseSubscription?.cancel();
-    record.dispose(); // As always, don't forget this one.
-
+    _recorder.closeRecorder();
     // _player.closePlayer();
     super.dispose();
   }
@@ -244,6 +242,25 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> requestPermission() async =>
       await Permission.microphone.request();
 
+  void convertToMp3(String wavFilePath) async {
+    final mp3FilePath = wavFilePath.replaceAll('.wav', '.mp3');
+
+    await FFmpegKit.execute('-i $wavFilePath $mp3FilePath');
+
+    // Check if the conversion was successful and then delete the WAV file
+    if (await File(mp3FilePath).exists()) {
+      try {
+        final wavFile = File(wavFilePath);
+        if (await wavFile.exists()) {
+          await wavFile.delete();
+          print('WAV file deleted: $wavFilePath');
+        }
+      } catch (e) {
+        print('Error deleting WAV file: $e');
+      }
+    }
+  }
+
   /// Start noise sampling.
   Future<void> start() async {
     noiseMeter ??= NoiseMeter();
@@ -253,51 +270,40 @@ class _MyHomePageState extends State<MyHomePage> {
     // Ensure permissions are granted
     if (!(await checkPermission())) await requestPermission();
 
-    // await _recorder.openRecorder();
+    await _recorder.openRecorder();
     _noiseSubscription = noiseMeter?.noise.listen(onData, onError: onError);
     setState(() => _isRecording = true);
 
-    // Check and request permission if needed
-    if (await record.hasPermission()) {
-      // Start recording to file
-      await record.start(const RecordConfig(),
-          path: '${directory?.path}/audio_recorded-$_recordingCount.mp3');
-    }
+    await _recorder.startRecorder(
+      toFile: '${directory?.path}/audio_recorded-$_recordingCount.wav',
+    );
 
     Timer.periodic(const Duration(minutes: 1), (timer) async {
       try {
-        // await _recorder.stopRecorder();
-        // Stop recording...        // Save file path to the history object
+        setState(() {
+          _newAddedHistory.add(
+            NoiseLevel(
+              recordedDate: DateTime.now().toString(),
+              decibel: _latestReading?.meanDecibel,
+              audioPath:
+                  '${directory?.path}/audio_recorded-$_recordingCount.wav',
+            ),
+          );
+        });
 
-        print(await record.isRecording());
-        print('really?');
-        if (await record.isRecording()) {
-          await record.stop();
+        _recordingCount += 1;
 
-          setState(() {
-            _newAddedHistory.add(
-              NoiseLevel(
-                recordedDate: DateTime.now().toString(),
-                decibel: _latestReading?.meanDecibel,
-                audioPath:
-                    '${directory?.path}/audio_recorded-$_recordingCount.mp3',
-              ),
-            );
-          });
-
-          _recordingCount += 1;
-        }
-
-        // Start recording to file
-        await record.start(const RecordConfig(),
-            path: '${directory?.path}/audio_recorded-$_recordingCount.mp3');
+        await _recorder.startRecorder(
+          toFile: '${directory?.path}/audio_recorded-$_recordingCount.wav',
+        );
 
         // Stop the timer if recording has stopped
         if (!_isRecording) {
-          // await _recorder.closeRecorder();
-          await record.stop();
+          await _recorder.closeRecorder();
+          convertToMp3(
+              '${directory?.path}/audio_recorded-$_recordingCount.wav');
+
           _noiseSubscription?.cancel();
-          record.dispose(); // As always, don't forget this one.
           timer.cancel();
         }
       } catch (e) {
@@ -316,13 +322,16 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   /// Stop sampling.
-  void stop() {
+  void stop() async {
+    final directory = await getExternalStorageDirectory();
     sendHistory();
     saveHistory();
 
     _noiseSubscription?.cancel();
-    record.stop();
-    record.dispose(); // As always, don't forget this one.
+    await _recorder.stopRecorder();
+
+    convertToMp3('${directory?.path}/audio_recorded-$_recordingCount.wav');
+    // record.dispose(); // As always, don't forget this one.
     setState(() {
       _isRecording = false;
     });
