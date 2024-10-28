@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
@@ -11,6 +12,7 @@ import 'models/noise_level.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter_noise_meter_demo/mic_selector.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:intl/intl.dart';
 
 import 'package:just_audio/just_audio.dart';
 
@@ -66,6 +68,11 @@ class _MyHomePageState extends State<MyHomePage> {
   final String _selectedMicName = '';
 
   int _recordingCount = 1;
+
+  final List<double> _secondReadings = [0];
+  final List<double> _hourlyReadings = [0];
+  DateTime _lastSecondTimestamp = DateTime.now();
+  DateTime _lastHourlyTimestamp = DateTime.now();
 
   final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
   final player = AudioPlayer();
@@ -337,8 +344,69 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  void onData(NoiseReading noiseReading) =>
-      setState(() => _latestReading = noiseReading);
+  double calculateLaEq(List<double> soundLevels) {
+    if (soundLevels.isEmpty) return 0.0;
+
+    double sumOfSquaredValues = 0;
+    for (var level in soundLevels) {
+      sumOfSquaredValues += pow(10, level / 10);
+    }
+
+    return 10 * (log(sumOfSquaredValues / soundLevels.length) / ln10);
+  }
+
+  void onData(NoiseReading noiseReading) async {
+    final now = DateTime.now();
+
+    // Group by second
+    if (_lastSecondTimestamp.second == now.second) {
+      _secondReadings.add(noiseReading.meanDecibel);
+    } else {
+      // Calculate LAeq for the last second
+      final laEqSecond = calculateLaEq(_secondReadings);
+      await saveLaEqSecond(laEqSecond, _lastSecondTimestamp);
+
+      setState(() {
+        // Store this second's LAeq for hourly calculation
+        _hourlyReadings.add(laEqSecond);
+      });
+
+      // Reset for the new second
+      _secondReadings.clear();
+      _secondReadings.add(noiseReading.meanDecibel);
+      _lastSecondTimestamp = now;
+
+      // Check if an hour has passed for hourly LAeq calculation
+      if (_lastHourlyTimestamp.hour != now.hour) {
+        final laEqHour = calculateLaEq(_hourlyReadings);
+        await saveLaEqHour(laEqHour, _lastHourlyTimestamp);
+        _hourlyReadings.clear();
+        _lastHourlyTimestamp = now;
+      }
+    }
+  }
+
+  Future<void> saveLaEqSecond(double laEq, DateTime timestamp) async {
+    final directory = await getExternalStorageDirectory();
+    final filePath = '${directory?.path}/laEQ_Seconds.txt';
+    final file = File(filePath);
+
+    final formattedDate = DateFormat('yyyy-MM-dd HH:mm:ss').format(timestamp);
+    final data = 'Date: $formattedDate, LAeq Second: $laEq\n';
+    await file.writeAsString(data, mode: FileMode.append);
+    print('Saved LAeq Second to: $filePath');
+  }
+
+  Future<void> saveLaEqHour(double laEq, DateTime timestamp) async {
+    final directory = await getExternalStorageDirectory();
+    final filePath = '${directory?.path}/laEQ_Hour.txt';
+    final file = File(filePath);
+
+    final formattedDate = DateFormat('yyyy-MM-dd HH').format(timestamp);
+    final data = 'Date: $formattedDate, LAeq Hour: $laEq\n';
+    await file.writeAsString(data, mode: FileMode.append);
+    print('Saved LAeq Hour to: $filePath');
+  }
 
   void onError(Object error) {
     print(error);
@@ -367,7 +435,7 @@ class _MyHomePageState extends State<MyHomePage> {
               height: 100,
               child: Center(
                 child: Text(
-                  '${_latestReading?.meanDecibel.toStringAsFixed(2)} dB',
+                  '${_hourlyReadings.last.toStringAsFixed(2)} dB',
                   style: const TextStyle(
                     fontSize: 40,
                     color: Colors.green,

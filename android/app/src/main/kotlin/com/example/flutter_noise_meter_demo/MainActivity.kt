@@ -40,12 +40,12 @@ class MainActivity: FlutterActivity() {
 
     private fun muteMicrophone() {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.setMicrophoneMute(true)
+        audioManager.setMicrophoneMute(false)
     }
 
     private fun unmuteMicrophone() {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        audioManager.setMicrophoneMute(true)
+        audioManager.setMicrophoneMute(false)
     }
     
 
@@ -53,6 +53,7 @@ class MainActivity: FlutterActivity() {
 
     private fun isExternalMicConnected(): Boolean {
         val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.setMode(AudioManager.MODE_IN_CALL)
         return audioManager.isWiredHeadsetOn || audioManager.isBluetoothScoOn
     }
 }
