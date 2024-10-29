@@ -368,7 +368,7 @@ class _MyHomePageState extends State<MyHomePage> {
           "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcGlLZXkiOiI2MDU0ZDY4MC0xNjQyLTExZWYtYWRmYi04OWNmYzE5N2Y0MTciLCJhcHBsaWNhdGlvbiI6eyJJZCI6IjVmOTk0ZWIwLTE2NDItMTFlZi1hZGZiLTg5Y2ZjMTk3ZjQxNyIsIlNjaGVtYU5hbWUiOiI1Zjk5NGViMC0xNjQyLTExZWYtYWRmYi04OWNmYzE5N2Y0MTcifSwiYWNjb3VudCI6eyJQZXJzb25JZCI6MSwiVXNlcklkIjoxfSwiZXhwaXJhdGlvbiI6IjE4MG0iLCJpYXQiOjE3MzAxODY3MjAsImV4cCI6MTczMDE5NzUyMH0.1GUwhWc9uDB1Jxm49o-6xTwpwGx58m4s-P8LKovS5ow";
 
       request.fields['Decibel'] = data.decibel.toString();
-      request.fields['RecordedDate'] = data.recordedDate!;
+      request.fields['RecordedDate'] = data.recordedDate;
       request.fields['Station'] = data.station.toString();
 
       // Attach MP3 file
@@ -424,7 +424,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
       // Check if an hour has passed for hourly LAeq calculation
       if (_lastHourlyTimestamp
-          .add(const Duration(seconds: 15))
+          .add(const Duration(hours: 1))
           .isBefore(DateTime.now())) {
         final laEqHour = calculateLaEq(_hourlyReadings);
         await saveLaEqHour(laEqHour, _lastHourlyTimestamp);
@@ -558,11 +558,11 @@ class _MyHomePageState extends State<MyHomePage> {
                 ][_noiseHistory.length + _newAddedHistory.length - index - 1];
                 String? date, time;
                 try {
-                  date = noiseItem.recordedDate?.split('T')[0];
-                  time = noiseItem.recordedDate?.split('T')[1].split('.')[0];
+                  date = noiseItem.recordedDate.split('T')[0];
+                  time = noiseItem.recordedDate.split('T')[1].split('.')[0];
                 } catch (error) {
-                  date = noiseItem.recordedDate?.split(' ')[0];
-                  time = noiseItem.recordedDate?.split(' ')[1].split('.')[0];
+                  date = noiseItem.recordedDate.split(' ')[0];
+                  time = noiseItem.recordedDate.split(' ')[1].split('.')[0];
                 }
                 return Flex(
                   direction: Axis.horizontal,
