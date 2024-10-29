@@ -13,7 +13,10 @@ import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter_noise_meter_demo/mic_selector.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 
+import 'package:http_parser/http_parser.dart';
 import 'package:just_audio/just_audio.dart';
 
 // need to replace shared preferences if going to be bigger
@@ -27,7 +30,9 @@ const apiKey = '';
 const emailAddress = '';
 const password = '';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   runApp(const MyApp());
 }
 
@@ -84,6 +89,7 @@ class _MyHomePageState extends State<MyHomePage> {
     // _player.openPlayer();
     initialize();
     _checkAndControlMicrophone();
+    _recorder.openRecorder();
     // getActiveAudioInputDevice().then((device) {
     //   setState(() {
     //     _activeDevice = device?.name;
@@ -141,15 +147,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> playRecordedAudio(String path) async {
     try {
-      print(path);
-      print('awit...');
-      // await _player.startPlayer(
-      //   fromURI: path,
-      //   codec: Codec.pcm16WAV,
-      //   whenFinished: () {
-      //     print('Playback finished');
-      //   },
-      // );
       await player.setUrl(// Load a URL
           path); // Schemes: (https: | file: | asset: )
       player.play();
@@ -249,9 +246,8 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> requestPermission() async =>
       await Permission.microphone.request();
 
-  void convertToMp3(String wavFilePath) async {
+  Future<String> convertToMp3(String wavFilePath) async {
     final mp3FilePath = wavFilePath.replaceAll('.wav', '.mp3');
-    _perHourRecordPath = mp3FilePath;
 
     // Delete existing MP3 file if it exists
     final mp3File = File(mp3FilePath);
@@ -279,6 +275,10 @@ class _MyHomePageState extends State<MyHomePage> {
         print('Error deleting WAV file: $e');
       }
     }
+    print(mp3FilePath);
+    print("awtsu");
+
+    return mp3FilePath;
   }
 
   /// Start noise sampling.
@@ -289,7 +289,19 @@ class _MyHomePageState extends State<MyHomePage> {
     // Ensure permissions are granted
     if (!(await checkPermission())) await requestPermission();
 
-    await _recorder.openRecorder();
+    // await _recorder.openRecorder();
+    final directory = await getExternalStorageDirectory();
+
+    _perHourRecordPath =
+        '${directory?.path}/audio_recorded-${DateFormat('hh-ss-yyyy-MM-dd').format(DateTime.now())}.wav';
+    await _recorder.startRecorder(
+      toFile: _perHourRecordPath,
+    );
+
+    setState(() {
+      _lastHourlyTimestamp = DateTime.now();
+    });
+
     _noiseSubscription = noiseMeter?.noise.listen(onData, onError: onError);
     setState(() => _isRecording = true);
   }
@@ -298,20 +310,33 @@ class _MyHomePageState extends State<MyHomePage> {
     _newAddedHistory.add(
       NoiseLevel(
           recordedDate: DateTime.now().toString(),
-          decibel: _latestReading?.meanDecibel,
+          decibel: _latestReading!.meanDecibel,
           audioPath: path),
     );
   }
 
   /// Stop sampling.
-  void stop() {
+  void stop() async {
     // sendHistory();
     // saveHistory();
 
-    // _noiseSubscription?.cancel();
-    // await _recorder.stopRecorder();
-    // convertToMp3(_perHourRecordPath);
-    // record.dispose(); // As always, don't forget this one.
+    _noiseSubscription?.cancel();
+
+    await _recorder.stopRecorder();
+    var convertedFile = await convertToMp3(_perHourRecordPath);
+
+    sendPostRequest(NoiseLevel(
+        recordedDate: DateTime.now().toString(),
+        decibel: _secondReadings.last,
+        audioPath: convertedFile));
+
+    _newAddedHistory.add(
+      NoiseLevel(
+          recordedDate: DateTime.now().toString(),
+          decibel: _secondReadings.last,
+          audioPath: _perHourRecordPath),
+    );
+
     setState(() {
       _isRecording = false;
     });
@@ -328,37 +353,59 @@ class _MyHomePageState extends State<MyHomePage> {
     return 10 * (log(sumOfSquaredValues / soundLevels.length) / ln10);
   }
 
-  void onData(NoiseReading noiseReading) async {
-    final now = DateTime.now();
+  Future<void> sendPostRequest(NoiseLevel data) async {
+    try {
+      final apiUrl = dotenv.env['API_URL'];
+      final apiKey = dotenv.env['API_KEY'];
+      print(apiUrl);
+      print(apiKey);
+      print(data);
+      print("Sending POST request...");
 
+      var request =
+          http.MultipartRequest('POST', Uri.parse('$apiUrl/api/e/NoiseLevels'));
+      request.headers['Authorization'] =
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcGlLZXkiOiI2MDU0ZDY4MC0xNjQyLTExZWYtYWRmYi04OWNmYzE5N2Y0MTciLCJhcHBsaWNhdGlvbiI6eyJJZCI6IjVmOTk0ZWIwLTE2NDItMTFlZi1hZGZiLTg5Y2ZjMTk3ZjQxNyIsIlNjaGVtYU5hbWUiOiI1Zjk5NGViMC0xNjQyLTExZWYtYWRmYi04OWNmYzE5N2Y0MTcifSwiYWNjb3VudCI6eyJQZXJzb25JZCI6MSwiVXNlcklkIjoxfSwiZXhwaXJhdGlvbiI6IjE4MG0iLCJpYXQiOjE3MzAxODY3MjAsImV4cCI6MTczMDE5NzUyMH0.1GUwhWc9uDB1Jxm49o-6xTwpwGx58m4s-P8LKovS5ow";
+
+      request.fields['Decibel'] = data.decibel.toString();
+      request.fields['RecordedDate'] = data.recordedDate!;
+      request.fields['Station'] = data.station.toString();
+
+      // Attach MP3 file
+      File file = File(data.audioPath);
+      request.files.add(await http.MultipartFile.fromPath(
+        'Recording',
+        file.path,
+        contentType: MediaType('audio', 'mpeg'),
+      ));
+
+      // Send request
+      var response = await request.send();
+
+      if (response.statusCode == 200) {
+        print('POST request successful');
+        print('Response: ${await response.stream.bytesToString()}');
+      } else {
+        print('POST request failed with status: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error during POST request: $e');
+    }
+  }
+
+  void onData(NoiseReading noiseReading) async {
     if (!_recorder.isRecording) {
       final directory = await getExternalStorageDirectory();
 
       _perHourRecordPath =
-          '${directory?.path}/audio_recorded-${DateFormat('hh-ss-yyyy-MM-dd').format(now)}.wav';
+          '${directory?.path}/audio_recorded-${DateFormat('hh-ss-yyyy-MM-dd').format(DateTime.now())}.wav';
       await _recorder.startRecorder(
         toFile: _perHourRecordPath,
       );
     }
 
-    if (!_isRecording) {
-      await _recorder.stopRecorder();
-      convertToMp3(_perHourRecordPath);
-
-      setState(() {
-        _newAddedHistory.add(
-          NoiseLevel(
-              recordedDate: now.toString(),
-              decibel: _secondReadings.last,
-              audioPath: _perHourRecordPath),
-        );
-      });
-
-      _noiseSubscription?.cancel();
-    }
-
     // Group by second
-    if (_lastSecondTimestamp.second == now.second) {
+    if (_lastSecondTimestamp.second == DateTime.now().second) {
       _secondReadings.add(noiseReading.meanDecibel);
     } else {
       // Calculate LAeq for the last second
@@ -373,25 +420,30 @@ class _MyHomePageState extends State<MyHomePage> {
       // Reset for the new second
       _secondReadings.clear();
       _secondReadings.add(noiseReading.meanDecibel);
-      _lastSecondTimestamp = now;
+      _lastSecondTimestamp = DateTime.now();
 
       // Check if an hour has passed for hourly LAeq calculation
-      if (_lastHourlyTimestamp.add(const Duration(hours: 1)).isBefore(now)) {
+      if (_lastHourlyTimestamp
+          .add(const Duration(seconds: 15))
+          .isBefore(DateTime.now())) {
         final laEqHour = calculateLaEq(_hourlyReadings);
         await saveLaEqHour(laEqHour, _lastHourlyTimestamp);
 
         await _recorder.stopRecorder();
-        convertToMp3(_perHourRecordPath);
+        var convertedFile = await convertToMp3(_perHourRecordPath);
 
-        _newAddedHistory.add(
-          NoiseLevel(
-              recordedDate: now.toString(),
-              decibel: laEqHour,
-              audioPath: _perHourRecordPath),
-        );
+        sendPostRequest(NoiseLevel(
+            recordedDate: _lastHourlyTimestamp.toString(),
+            decibel: laEqHour,
+            audioPath: convertedFile));
+
+        _newAddedHistory.add(NoiseLevel(
+            recordedDate: _lastHourlyTimestamp.toString(),
+            decibel: laEqHour,
+            audioPath: convertedFile));
 
         _hourlyReadings.clear();
-        _lastHourlyTimestamp = now;
+        _lastHourlyTimestamp = DateTime.now();
       }
     }
   }

@@ -1,15 +1,15 @@
 class NoiseLevel {
   final int? id;
-  final String? recordedDate;
-  final double? decibel;
-  final String station;
+  final String recordedDate;
+  final double decibel;
+  final int station;
   final String audioPath;
 
   NoiseLevel({
     this.id,
-    this.recordedDate,
-    this.decibel,
-    this.station = 'Station 1',
+    this.recordedDate = '',
+    this.decibel = 0.0,
+    this.station = 1,
     this.audioPath = '',
   });
 
@@ -18,7 +18,7 @@ class NoiseLevel {
       id: json['id'],
       recordedDate: json['recordedDate'],
       decibel: (json['decibel']),
-      station: json['station'] ?? 'Station 1',
+      station: json['station'] ?? 1,
     );
   }
   factory NoiseLevel.fromJsonRemote(Map<String, dynamic> json) {
@@ -26,7 +26,7 @@ class NoiseLevel {
       id: json['Id'],
       recordedDate: json['recordedDate'],
       decibel: double.parse(json['decibel'].toString()),
-      station: json['station'] ?? 'Station 1',
+      station: json['station'] ?? 1,
     );
   }
 
