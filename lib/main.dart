@@ -67,7 +67,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _isExternalMicConnected = false;
   final String _selectedMicName = '';
 
-  int _recordingCount = 1;
+  var _perHourRecordPath = '';
 
   final List<double> _secondReadings = [0];
   final List<double> _hourlyReadings = [0];
@@ -251,11 +251,24 @@ class _MyHomePageState extends State<MyHomePage> {
 
   void convertToMp3(String wavFilePath) async {
     final mp3FilePath = wavFilePath.replaceAll('.wav', '.mp3');
+    _perHourRecordPath = mp3FilePath;
 
+    // Delete existing MP3 file if it exists
+    final mp3File = File(mp3FilePath);
+    if (await mp3File.exists()) {
+      try {
+        await mp3File.delete();
+        print('Existing MP3 file deleted: $mp3FilePath');
+      } catch (e) {
+        print('Error deleting existing MP3 file: $e');
+      }
+    }
+
+    // Convert WAV to MP3
     await FFmpegKit.execute('-i $wavFilePath $mp3FilePath');
 
     // Check if the conversion was successful and then delete the WAV file
-    if (await File(mp3FilePath).exists()) {
+    if (await mp3File.exists()) {
       try {
         final wavFile = File(wavFilePath);
         if (await wavFile.exists()) {
@@ -272,7 +285,6 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> start() async {
     noiseMeter ??= NoiseMeter();
     // Get the directory for saving files
-    final directory = await getExternalStorageDirectory();
 
     // Ensure permissions are granted
     if (!(await checkPermission())) await requestPermission();
@@ -280,64 +292,25 @@ class _MyHomePageState extends State<MyHomePage> {
     await _recorder.openRecorder();
     _noiseSubscription = noiseMeter?.noise.listen(onData, onError: onError);
     setState(() => _isRecording = true);
-
-    await _recorder.startRecorder(
-      toFile: '${directory?.path}/audio_recorded-$_recordingCount.wav',
-    );
-
-    Timer.periodic(const Duration(minutes: 1), (timer) async {
-      try {
-        setState(() {
-          _newAddedHistory.add(
-            NoiseLevel(
-              recordedDate: DateTime.now().toString(),
-              decibel: _latestReading?.meanDecibel,
-              audioPath:
-                  '${directory?.path}/audio_recorded-$_recordingCount.wav',
-            ),
-          );
-        });
-
-        _recordingCount += 1;
-
-        await _recorder.startRecorder(
-          toFile: '${directory?.path}/audio_recorded-$_recordingCount.wav',
-        );
-
-        // Stop the timer if recording has stopped
-        if (!_isRecording) {
-          await _recorder.closeRecorder();
-          convertToMp3(
-              '${directory?.path}/audio_recorded-$_recordingCount.wav');
-
-          _noiseSubscription?.cancel();
-          timer.cancel();
-        }
-      } catch (e) {
-        print('Error during recording: $e');
-      }
-    });
   }
 
-  void addNoiseLevel() {
+  void addNoiseLevel(path) {
     _newAddedHistory.add(
       NoiseLevel(
           recordedDate: DateTime.now().toString(),
           decibel: _latestReading?.meanDecibel,
-          audioPath: 'audio_recorded-$_recordingCount'),
+          audioPath: path),
     );
   }
 
   /// Stop sampling.
-  void stop() async {
-    final directory = await getExternalStorageDirectory();
-    sendHistory();
-    saveHistory();
+  void stop() {
+    // sendHistory();
+    // saveHistory();
 
-    _noiseSubscription?.cancel();
-    await _recorder.stopRecorder();
-
-    convertToMp3('${directory?.path}/audio_recorded-$_recordingCount.wav');
+    // _noiseSubscription?.cancel();
+    // await _recorder.stopRecorder();
+    // convertToMp3(_perHourRecordPath);
     // record.dispose(); // As always, don't forget this one.
     setState(() {
       _isRecording = false;
@@ -358,6 +331,32 @@ class _MyHomePageState extends State<MyHomePage> {
   void onData(NoiseReading noiseReading) async {
     final now = DateTime.now();
 
+    if (!_recorder.isRecording) {
+      final directory = await getExternalStorageDirectory();
+
+      _perHourRecordPath =
+          '${directory?.path}/audio_recorded-${DateFormat('hh-ss-yyyy-MM-dd').format(now)}.wav';
+      await _recorder.startRecorder(
+        toFile: _perHourRecordPath,
+      );
+    }
+
+    if (!_isRecording) {
+      await _recorder.stopRecorder();
+      convertToMp3(_perHourRecordPath);
+
+      setState(() {
+        _newAddedHistory.add(
+          NoiseLevel(
+              recordedDate: now.toString(),
+              decibel: _secondReadings.last,
+              audioPath: _perHourRecordPath),
+        );
+      });
+
+      _noiseSubscription?.cancel();
+    }
+
     // Group by second
     if (_lastSecondTimestamp.second == now.second) {
       _secondReadings.add(noiseReading.meanDecibel);
@@ -377,9 +376,20 @@ class _MyHomePageState extends State<MyHomePage> {
       _lastSecondTimestamp = now;
 
       // Check if an hour has passed for hourly LAeq calculation
-      if (_lastHourlyTimestamp.hour != now.hour) {
+      if (_lastHourlyTimestamp.add(const Duration(hours: 1)).isBefore(now)) {
         final laEqHour = calculateLaEq(_hourlyReadings);
         await saveLaEqHour(laEqHour, _lastHourlyTimestamp);
+
+        await _recorder.stopRecorder();
+        convertToMp3(_perHourRecordPath);
+
+        _newAddedHistory.add(
+          NoiseLevel(
+              recordedDate: now.toString(),
+              decibel: laEqHour,
+              audioPath: _perHourRecordPath),
+        );
+
         _hourlyReadings.clear();
         _lastHourlyTimestamp = now;
       }
@@ -388,7 +398,9 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> saveLaEqSecond(double laEq, DateTime timestamp) async {
     final directory = await getExternalStorageDirectory();
-    final filePath = '${directory?.path}/laEQ_Seconds.txt';
+
+    final filePath =
+        '${directory?.path}/laEQ_Seconds_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.txt';
     final file = File(filePath);
 
     final formattedDate = DateFormat('yyyy-MM-dd HH:mm:ss').format(timestamp);
@@ -399,7 +411,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Future<void> saveLaEqHour(double laEq, DateTime timestamp) async {
     final directory = await getExternalStorageDirectory();
-    final filePath = '${directory?.path}/laEQ_Hour.txt';
+    final filePath =
+        '${directory?.path}/laEQ_Hours_${DateFormat('yyyy-MM-dd').format(DateTime.now())}.txt';
     final file = File(filePath);
 
     final formattedDate = DateFormat('yyyy-MM-dd HH').format(timestamp);
