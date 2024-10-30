@@ -51,6 +51,8 @@ dependencies:
   flutter_dotenv: ^5.2.1
   http: ^1.2.2
   http_parser: ^4.0.2
+  flutter_secure_storage: ^4.2.1
+  timezone: ^0.9.4
 
 dev_dependencies:
   flutter_test:

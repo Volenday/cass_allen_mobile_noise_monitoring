@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:lottie/lottie.dart';
 import 'package:noise_meter/noise_meter.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -55,11 +55,29 @@ class _RecordScreenState extends State<RecordScreen> {
   final FlutterSoundRecorder _recorder = FlutterSoundRecorder();
   final player = AudioPlayer();
 
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  String? _userCredentials;
+  String? _currentToken;
+
   @override
   void initState() {
     super.initState();
     _checkAndControlMicrophone();
     _recorder.openRecorder();
+    _readData();
+  }
+
+  Future<void> _readData() async {
+    String? credentials = await _secureStorage.read(key: 'user_credentials');
+    String? token = await _secureStorage.read(key: 'token');
+
+    print(credentials);
+    print("agik");
+
+    setState(() {
+      _userCredentials = credentials;
+      _currentToken = token;
+    });
   }
 
   // Method to check external mic and mute/unmute based on its status
@@ -252,12 +270,14 @@ class _RecordScreenState extends State<RecordScreen> {
 
       var request =
           http.MultipartRequest('POST', Uri.parse('$apiUrl/api/e/NoiseLevels'));
-      request.headers['Authorization'] =
-          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhcGlLZXkiOiI2MDU0ZDY4MC0xNjQyLTExZWYtYWRmYi04OWNmYzE5N2Y0MTciLCJhcHBsaWNhdGlvbiI6eyJJZCI6IjVmOTk0ZWIwLTE2NDItMTFlZi1hZGZiLTg5Y2ZjMTk3ZjQxNyIsIlNjaGVtYU5hbWUiOiI1Zjk5NGViMC0xNjQyLTExZWYtYWRmYi04OWNmYzE5N2Y0MTcifSwiYWNjb3VudCI6eyJQZXJzb25JZCI6MSwiVXNlcklkIjoxfSwiZXhwaXJhdGlvbiI6IjE4MG0iLCJpYXQiOjE3MzAxODY3MjAsImV4cCI6MTczMDE5NzUyMH0.1GUwhWc9uDB1Jxm49o-6xTwpwGx58m4s-P8LKovS5ow";
+      request.headers['Authorization'] = _currentToken!;
 
       request.fields['Decibel'] = data.decibel.toString();
       request.fields['RecordedDate'] = data.recordedDate;
-      request.fields['Station'] = data.station.toString();
+      request.fields['Station'] = jsonDecode(_userCredentials!)['Station']['Id']
+          .toString()
+          .replaceAll('Station ', '')
+          .trim();
 
       // Attach MP3 file
       File file = File(data.audioPath);
@@ -389,9 +409,9 @@ class _RecordScreenState extends State<RecordScreen> {
               child: Center(
                 child: Text(
                   '${_hourlyReadings.last.toStringAsFixed(2)} dB',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 40,
-                    color: Colors.green,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
               ),
@@ -485,7 +505,7 @@ class _RecordScreenState extends State<RecordScreen> {
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Colors.green,
+        backgroundColor: Theme.of(context).colorScheme.primary,
         onPressed: _isRecording ? stop : start,
         label: Text(_isRecording ? 'Stop' : 'Start'),
         icon: Icon(_isRecording ? Icons.stop : Icons.mic),
