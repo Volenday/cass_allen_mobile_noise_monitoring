@@ -231,16 +231,19 @@ class _RecordScreenState extends State<RecordScreen> {
     await _recorder.stopRecorder();
     var convertedFile = await convertToMp3(_perHourRecordPath);
 
-    sendPostRequest(NoiseLevel(
-        recordedDate: DateTime.now().toString(),
-        decibel: _secondReadings.last,
-        audioPath: convertedFile));
+    // sendPostRequest(NoiseLevel(
+    //     recordedDate: DateTime.now().toString(),
+    //     decibel: _secondReadings.last,
+    //     audioPath: convertedFile));
 
     _newAddedHistory.add(
       NoiseLevel(
+          isExceeded: isNoiseExceeded(
+            _secondReadings.last,
+          ),
           recordedDate: DateTime.now().toString(),
           decibel: _secondReadings.last,
-          audioPath: _perHourRecordPath),
+          audioPath: convertedFile),
     );
 
     setState(() {
@@ -279,6 +282,10 @@ class _RecordScreenState extends State<RecordScreen> {
           .replaceAll('Station ', '')
           .trim();
 
+      //  jsonDecode(_userCredentials!)['Station']['Duration'])
+
+      request.fields['IsExceeded'] = data.isExceeded.toString();
+
       // Attach MP3 file
       File file = File(data.audioPath);
       request.files.add(await http.MultipartFile.fromPath(
@@ -299,6 +306,40 @@ class _RecordScreenState extends State<RecordScreen> {
     } catch (e) {
       print('Error during POST request: $e');
     }
+  }
+
+  Duration parseDuration(String input) {
+    final match = RegExp(r'(\d+)(h|s|m)').firstMatch(input);
+
+    if (match != null) {
+      final durationValue = int.parse(match.group(1)!);
+      final unit = match.group(2)!;
+
+      switch (unit) {
+        case 'h':
+          return Duration(hours: durationValue);
+        case 's':
+          return Duration(seconds: durationValue);
+        case 'm':
+          return Duration(minutes: durationValue);
+        default:
+          throw ArgumentError('Invalid duration unit: $unit');
+      }
+    } else {
+      throw ArgumentError('Invalid duration format: $input');
+    }
+  }
+
+  bool isNoiseExceeded(double currentNoiseLevel) {
+    String thresholdNoiseLevel =
+        jsonDecode(_userCredentials!)['Station']['Threshold'];
+
+    double roundedCurrentNoiseLevel =
+        double.parse((currentNoiseLevel).toStringAsFixed(2));
+    double roundedThresholdNoiseLevel = double.parse((thresholdNoiseLevel));
+
+    // Compare the rounded values
+    return roundedCurrentNoiseLevel > roundedThresholdNoiseLevel;
   }
 
   void onData(NoiseReading noiseReading) async {
@@ -332,7 +373,8 @@ class _RecordScreenState extends State<RecordScreen> {
 
       // Check if an hour has passed for hourly LAeq calculation
       if (_lastHourlyTimestamp
-          .add(const Duration(hours: 1))
+          .add(parseDuration(
+              jsonDecode(_userCredentials!)['Station']['Duration']))
           .isBefore(DateTime.now())) {
         final laEqHour = calculateLaEq(_hourlyReadings);
         await saveLaEqHour(laEqHour, _lastHourlyTimestamp);
@@ -341,11 +383,17 @@ class _RecordScreenState extends State<RecordScreen> {
         var convertedFile = await convertToMp3(_perHourRecordPath);
 
         sendPostRequest(NoiseLevel(
+            isExceeded: isNoiseExceeded(
+              laEqHour,
+            ),
             recordedDate: _lastHourlyTimestamp.toString(),
             decibel: laEqHour,
             audioPath: convertedFile));
 
         _newAddedHistory.add(NoiseLevel(
+            isExceeded: isNoiseExceeded(
+              laEqHour,
+            ),
             recordedDate: _lastHourlyTimestamp.toString(),
             decibel: laEqHour,
             audioPath: convertedFile));
@@ -376,7 +424,8 @@ class _RecordScreenState extends State<RecordScreen> {
     final file = File(filePath);
 
     final formattedDate = DateFormat('yyyy-MM-dd HH').format(timestamp);
-    final data = 'Date: $formattedDate, LAeq Hour: $laEq\n';
+    final data =
+        'Date: $formattedDate, LAeq Hour: ${laEq.toStringAsFixed(2)}\n';
     await file.writeAsString(data, mode: FileMode.append);
     print('Saved LAeq Hour to: $filePath');
   }

@@ -4,6 +4,7 @@ class NoiseLevel {
   final double decibel;
   final int station;
   final String audioPath;
+  final bool isExceeded;
 
   NoiseLevel({
     this.id,
@@ -11,6 +12,7 @@ class NoiseLevel {
     this.decibel = 0.0,
     this.station = 1,
     this.audioPath = '',
+    this.isExceeded = false,
   });
 
   factory NoiseLevel.fromJsonLocal(Map<String, dynamic> json) {
