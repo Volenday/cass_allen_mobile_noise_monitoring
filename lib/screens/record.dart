@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_noise_meter_demo/main.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:lottie/lottie.dart';
 import 'package:noise_meter/noise_meter.dart';
@@ -15,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_noise_meter_demo/screens/login.dart';
 
 import 'package:http_parser/http_parser.dart';
 import 'package:just_audio/just_audio.dart';
@@ -62,7 +64,7 @@ class _RecordScreenState extends State<RecordScreen> {
   @override
   void initState() {
     super.initState();
-    _checkAndControlMicrophone();
+    // _checkAndControlMicrophone();
     _recorder.openRecorder();
     _readData();
   }
@@ -231,10 +233,10 @@ class _RecordScreenState extends State<RecordScreen> {
     await _recorder.stopRecorder();
     var convertedFile = await convertToMp3(_perHourRecordPath);
 
-    // sendPostRequest(NoiseLevel(
-    //     recordedDate: DateTime.now().toString(),
-    //     decibel: _secondReadings.last,
-    //     audioPath: convertedFile));
+    sendPostRequest(NoiseLevel(
+        recordedDate: DateTime.now().toString(),
+        decibel: _secondReadings.last,
+        audioPath: convertedFile));
 
     _newAddedHistory.add(
       NoiseLevel(
@@ -448,7 +450,67 @@ class _RecordScreenState extends State<RecordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_userCredentials == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: whiteColor,
+        leading: Image.network(
+            'https://d3t9tvgbdc7c7w.cloudfront.net/development/applications/5f994eb0-1642-11ef-adfb-89cfc197f417/cass-allen-logo-3.png'),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (String value) async {
+              if (value == 'logout') {
+                await _secureStorage.delete(key: 'user_credentials');
+                if (!context.mounted) return;
+
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                );
+              }
+            },
+            itemBuilder: (BuildContext context) {
+              return {'Logout'}.map((String choice) {
+                return const PopupMenuItem<String>(
+                  value: 'logout',
+                  child: Text("Logout"),
+                );
+              }).toList();
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                          '${jsonDecode(_userCredentials!)['Admin']['FirstName']} ${jsonDecode(_userCredentials!)['Admin']['LastName']}'),
+                      const Text(
+                        'Admin',
+                        style: TextStyle(
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 10),
+                  CircleAvatar(
+                    backgroundImage: NetworkImage(
+                        '${jsonDecode(_userCredentials!)['Admin']['Photo']['url']}'), // Replace with your avatar URL
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: <Widget>[
           Padding(
@@ -456,12 +518,17 @@ class _RecordScreenState extends State<RecordScreen> {
             child: SizedBox(
               height: 100,
               child: Center(
-                child: Text(
-                  '${_hourlyReadings.last.toStringAsFixed(2)} dB',
-                  style: TextStyle(
-                    fontSize: 40,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+                child: Column(
+                  children: [
+                    Text(jsonDecode(_userCredentials!)['Station']['Name']),
+                    Text(
+                      '${_hourlyReadings.last.toStringAsFixed(2)} dB',
+                      style: TextStyle(
+                        fontSize: 40,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -473,7 +540,13 @@ class _RecordScreenState extends State<RecordScreen> {
               fit: BoxFit.contain,
             ),
           ),
-          Text(_selectedMicName),
+          const Text(
+            "Latest Date Updated",
+            style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(
+            height: 10,
+          ),
           const Flex(direction: Axis.horizontal, children: [
             Expanded(
               child: Text(

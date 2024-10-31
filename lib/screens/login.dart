@@ -17,12 +17,16 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _passwordVisible = false;
   bool _rememberMe = false;
+  bool _isLoading = false;
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   Future<void> _login() async {
+    setState(() {
+      _isLoading = true;
+    });
     final apiUrl = dotenv.env['API_URL'];
     final apiKey = dotenv.env['API_KEY'];
     final environment = dotenv.env['ENV'];
@@ -36,7 +40,8 @@ class _LoginScreenState extends State<LoginScreen> {
         "emailAddress": email,
         "password": password,
         "apiKey": apiKey,
-        "environment": environment
+        "environment": environment,
+        "rememberMe": _rememberMe,
       }),
     );
 
@@ -69,6 +74,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (admin == null) {
           _showErrorDialog('User not found in station admins');
+
+          setState(() {
+            _isLoading = false;
+          });
           return;
         }
 
@@ -77,11 +86,21 @@ class _LoginScreenState extends State<LoginScreen> {
         await _secureStorage.write(key: 'token', value: loginUserToken);
         await _secureStorage.write(key: 'refresh_token', value: refreshToken);
 
-        _showSuccessDialog();
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const RecordScreen()),
+        );
       } else {
+        setState(() {
+          _isLoading = false;
+        });
         _showErrorDialog('Failed to fetch station admins');
       }
     } else {
+      setState(() {
+        _isLoading = false;
+      });
       _showErrorDialog(response.body);
     }
   }
@@ -330,7 +349,7 @@ class _LoginScreenState extends State<LoginScreen> {
           child: FloatingActionButton.extended(
             foregroundColor: whiteColor,
             backgroundColor: Theme.of(context).colorScheme.primary,
-            onPressed: _login,
+            onPressed: _isLoading ? null : _login,
             label: const Text('Log in'),
             icon: const Icon(Icons.arrow_back_rounded),
           ),

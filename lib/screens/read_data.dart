@@ -16,8 +16,6 @@ class _ReadDataState extends State<ReadData> {
   bool _isLoading = true; // Add loading state
 
   Future<void> _readData() async {
-    // await _secureStorage.delete(key: 'user_credentials');
-
     String? credentials = await _secureStorage.read(key: 'user_credentials');
 
     setState(() {
